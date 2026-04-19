@@ -2,6 +2,8 @@
 data/applications.md
 data/pipeline.md
 data/scan-history.tsv
+data/crawl-log.md
+data/follow-ups.md
 reports/*.md
 !reports/.gitkeep
 output/*
@@ -31,9 +33,23 @@ bun.lock
 .DS_Store
 *.mov
 *.mp4
+*.log
 
 # Claude Code local
 .claude/settings.local.json
 .claude/memory/
 career-dashboard
-package-lock.json
+
+# Crawler data
+data/*.tmp
+data/cache/
+
+# Web dashboard build artifacts
+dashboard-web/.next/
+
+# OpenCode runtime
+.opencode/node_modules/
+
+node_modules
+.pack
+.gz

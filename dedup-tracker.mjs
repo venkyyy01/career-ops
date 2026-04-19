@@ -12,50 +12,17 @@
 import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { getStatusRank } from './lib/statuses.mjs';
+import { normalizeCompany, parseScore, parseAppLine, getAppsFile } from './lib/tracker.mjs';
 
 const CAREER_OPS = dirname(fileURLToPath(import.meta.url));
-// Support both layouts: data/applications.md (boilerplate) and applications.md (original)
-const APPS_FILE = existsSync(join(CAREER_OPS, 'data/applications.md'))
-  ? join(CAREER_OPS, 'data/applications.md')
-  : join(CAREER_OPS, 'applications.md');
+const APPS_FILE = getAppsFile();
 const DRY_RUN = process.argv.includes('--dry-run');
 
 // Ensure required directories exist (fresh setup)
 mkdirSync(join(CAREER_OPS, 'data'), { recursive: true });
 
-// Status advancement order (higher = more advanced in pipeline)
-// Aplicado > Rechazado because active application > terminal state
-const STATUS_RANK = {
-  // English canonicals (states.yml labels)
-  'skip': 0,
-  'discarded': 0,
-  'rejected': 1,
-  'evaluated': 2,
-  'applied': 3,
-  'responded': 4,
-  'interview': 5,
-  'offer': 6,
-  // Spanish aliases — kept for backwards compat with existing tracker data
-  'no_aplicar': 0,
-  'no aplicar': 0,
-  'descartado': 0,
-  'descartada': 0,
-  'rechazado': 1,  // Terminal — below active states
-  'rechazada': 1,
-  'evaluada': 2,
-  'aplicado': 3,
-  'respondido': 4,
-  'entrevista': 5,
-  'oferta': 6,
-};
-
-function normalizeCompany(name) {
-  return name.toLowerCase()
-    .replace(/[()]/g, '')
-    .replace(/\s+/g, ' ')
-    .replace(/[^a-z0-9 ]/g, '')
-    .trim();
-}
+const STATUS_RANK = getStatusRank();
 
 function normalizeRole(role) {
   return role.toLowerCase()
@@ -93,30 +60,6 @@ function roleMatch(a, b) {
   const ratio = overlap.length / smaller;
 
   return overlap.length >= 2 && ratio >= 0.6;
-}
-
-function parseScore(s) {
-  const m = s.replace(/\*\*/g, '').match(/([\d.]+)/);
-  return m ? parseFloat(m[1]) : 0;
-}
-
-function parseAppLine(line) {
-  const parts = line.split('|').map(s => s.trim());
-  if (parts.length < 9) return null;
-  const num = parseInt(parts[1]);
-  if (isNaN(num)) return null;
-  return {
-    num,
-    date: parts[2],
-    company: parts[3],
-    role: parts[4],
-    score: parts[5],
-    status: parts[6],
-    pdf: parts[7],
-    report: parts[8],
-    notes: parts[9] || '',
-    raw: line,
-  };
 }
 
 // Read
@@ -222,9 +165,10 @@ for (const idx of sortedRemoveIndices) {
 console.log(`\n📊 ${removed} duplicates removed`);
 
 if (!DRY_RUN && removed > 0) {
-  copyFileSync(APPS_FILE, APPS_FILE + '.bak');
+  const ts = new Date().toISOString().replace(/[:.]/g, '-');
+  copyFileSync(APPS_FILE, APPS_FILE.replace(/\.md$/, `-${ts}.bak.md`));
   writeFileSync(APPS_FILE, lines.join('\n'));
-  console.log('✅ Written to applications.md (backup: applications.md.bak)');
+  console.log('✅ Written to applications.md (timestamped backup saved)');
 } else if (DRY_RUN) {
   console.log('(dry-run — no changes written)');
 } else {

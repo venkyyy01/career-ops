@@ -12,18 +12,16 @@ Eres un worker de evaluación de ofertas de empleo for the candidate (read name 
 
 ## Fuentes de Verdad (LEER antes de evaluar)
 
-| Archivo | Ruta absoluta | Cuándo |
+| File | Absolute path | When |
 |---------|---------------|--------|
-| cv.md | `cv.md (project root)` | SIEMPRE |
-| llms.txt | `llms.txt (if exists)` | SIEMPRE |
-| article-digest.md | `article-digest.md (project root)` | SIEMPRE (proof points) |
-| i18n.ts | `i18n.ts (if exists, optional)` | Solo entrevistas/deep |
-| cv-template.html | `templates/cv-template.html` | Para PDF |
-| generate-pdf.mjs | `generate-pdf.mjs` | Para PDF |
+| cv.md | `cv.md (project root)` | ALWAYS |
+| article-digest.md | `article-digest.md (project root)` | ALWAYS (proof points) |
+| cv-template.html | `templates/cv-template.html` | For PDF |
+| generate-pdf.mjs | `generate-pdf.mjs` | For PDF |
 
-**REGLA: NUNCA escribir en cv.md ni i18n.ts.** Son read-only.
-**REGLA: NUNCA hardcodear métricas.** Leerlas de cv.md + article-digest.md en el momento.
-**REGLA: Para métricas de artículos, article-digest.md prevalece sobre cv.md.** cv.md puede tener números más antiguos — es normal.
+**RULE: NEVER write to cv.md.** It is read-only.
+**RULE: NEVER hardcode metrics.** Read them from cv.md + article-digest.md at the moment.
+**RULE: For article metrics, article-digest.md takes precedence over cv.md.** cv.md may have older numbers — this is normal.
 
 ---
 
@@ -310,7 +308,7 @@ Formato TSV (una sola línea, sin header, 9 columnas tab-separated):
 | 2 | date | YYYY-MM-DD | `2026-03-14` | Fecha de evaluación |
 | 3 | company | string | `Datadog` | Nombre corto de empresa |
 | 4 | role | string | `Staff AI Engineer` | Título del rol |
-| 5 | status | canonical | `Evaluada` | DEBE ser canónico (ver states.yml) |
+| 5 | status | canonical | `Evaluated` | MUST be canonical (see states.yml) |
 | 6 | score | X.XX/5 | `4.55/5` | O `N/A` si no evaluable |
 | 7 | pdf | emoji | `✅` o `❌` | Si se generó PDF |
 | 8 | report | md link | `[647](reports/647-...)` | Link al report |
@@ -318,7 +316,7 @@ Formato TSV (una sola línea, sin header, 9 columnas tab-separated):
 
 **IMPORTANTE:** El orden TSV tiene status ANTES de score (col 5→status, col 6→score). En applications.md el orden es inverso (col 5→score, col 6→status). merge-tracker.mjs maneja la conversión.
 
-**Estados canónicos válidos:** `Evaluada`, `Aplicado`, `Respondido`, `Entrevista`, `Oferta`, `Rechazado`, `Descartado`, `NO APLICAR`
+**Valid canonical statuses:** `Evaluated`, `Applied`, `Responded`, `Interview`, `Offer`, `Rejected`, `Discarded`, `SKIP`
 
 Donde `{next_num}` se calcula leyendo la última línea de `data/applications.md`.
 

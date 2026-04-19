@@ -18,12 +18,11 @@ import { readFileSync, writeFileSync, readdirSync, mkdirSync, renameSync, exists
 import { join, basename, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { execFileSync } from 'child_process';
+import { validateStatus } from './lib/statuses.mjs';
+import { normalizeCompany, roleFuzzyMatch, extractReportNum, parseScore, parseAppLine, getAppsFile } from './lib/tracker.mjs';
 
 const CAREER_OPS = dirname(fileURLToPath(import.meta.url));
-// Support both layouts: data/applications.md (boilerplate) and applications.md (original)
-const APPS_FILE = existsSync(join(CAREER_OPS, 'data/applications.md'))
-  ? join(CAREER_OPS, 'data/applications.md')
-  : join(CAREER_OPS, 'applications.md');
+const APPS_FILE = getAppsFile();
 const ADDITIONS_DIR = join(CAREER_OPS, 'batch/tracker-additions');
 const MERGED_DIR = join(ADDITIONS_DIR, 'merged');
 const DRY_RUN = process.argv.includes('--dry-run');
@@ -32,73 +31,6 @@ const VERIFY = process.argv.includes('--verify');
 // Ensure required directories exist (fresh setup)
 mkdirSync(join(CAREER_OPS, 'data'), { recursive: true });
 mkdirSync(ADDITIONS_DIR, { recursive: true });
-
-// Canonical states and aliases
-const CANONICAL_STATES = ['Evaluated', 'Applied', 'Responded', 'Interview', 'Offer', 'Rejected', 'Discarded', 'SKIP'];
-
-function validateStatus(status) {
-  const clean = status.replace(/\*\*/g, '').replace(/\s+\d{4}-\d{2}-\d{2}.*$/, '').trim();
-  const lower = clean.toLowerCase();
-
-  for (const valid of CANONICAL_STATES) {
-    if (valid.toLowerCase() === lower) return valid;
-  }
-
-  // Aliases
-  const aliases = {
-    // Spanish → English
-    'evaluada': 'Evaluated', 'condicional': 'Evaluated', 'hold': 'Evaluated', 'evaluar': 'Evaluated', 'verificar': 'Evaluated',
-    'aplicado': 'Applied', 'enviada': 'Applied', 'aplicada': 'Applied', 'applied': 'Applied', 'sent': 'Applied',
-    'respondido': 'Responded',
-    'entrevista': 'Interview',
-    'oferta': 'Offer',
-    'rechazado': 'Rejected', 'rechazada': 'Rejected',
-    'descartado': 'Discarded', 'descartada': 'Discarded', 'cerrada': 'Discarded', 'cancelada': 'Discarded',
-    'no aplicar': 'SKIP', 'no_aplicar': 'SKIP', 'skip': 'SKIP', 'monitor': 'SKIP',
-    'geo blocker': 'SKIP',
-  };
-
-  if (aliases[lower]) return aliases[lower];
-
-  // DUPLICADO/Repost → Discarded
-  if (/^(duplicado|dup|repost)/i.test(lower)) return 'Discarded';
-
-  console.warn(`⚠️  Non-canonical status "${status}" → defaulting to "Evaluated"`);
-  return 'Evaluated';
-}
-
-function normalizeCompany(name) {
-  return name.toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-function roleFuzzyMatch(a, b) {
-  const wordsA = a.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-  const wordsB = b.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-  const overlap = wordsA.filter(w => wordsB.some(wb => wb.includes(w) || w.includes(wb)));
-  return overlap.length >= 2;
-}
-
-function extractReportNum(reportStr) {
-  const m = reportStr.match(/\[(\d+)\]/);
-  return m ? parseInt(m[1]) : null;
-}
-
-function parseScore(s) {
-  const m = s.replace(/\*\*/g, '').match(/([\d.]+)/);
-  return m ? parseFloat(m[1]) : 0;
-}
-
-function parseAppLine(line) {
-  const parts = line.split('|').map(s => s.trim());
-  if (parts.length < 9) return null;
-  const num = parseInt(parts[1]);
-  if (isNaN(num) || num === 0) return null;
-  return {
-    num, date: parts[2], company: parts[3], role: parts[4],
-    score: parts[5], status: parts[6], pdf: parts[7], report: parts[8],
-    notes: parts[9] || '', raw: line,
-  };
-}
 
 /**
  * Parse a TSV file content into a structured addition object.

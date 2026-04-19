@@ -12,7 +12,7 @@
 
 import { chromium } from 'playwright';
 import { resolve, dirname } from 'path';
-import { readFile } from 'fs/promises';
+import { readFile, writeFile } from 'fs/promises';
 import { mkdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 
@@ -159,9 +159,7 @@ async function generatePDF() {
       preferCSSPageSize: false,
     });
 
-    // Write PDF
-    const { writeFile } = await import('fs/promises');
-    await writeFile(outputPath, pdfBuffer);
+      await writeFile(outputPath, pdfBuffer);
 
     // Count pages (approximate from PDF structure)
     const pdfString = pdfBuffer.toString('latin1');

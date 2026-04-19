@@ -17,6 +17,7 @@
 
 import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from 'fs';
 import yaml from 'js-yaml';
+import { buildTitleFilter, loadSeenUrls } from './lib/filters.mjs';
 const parseYaml = yaml.load;
 
 // ── Config ──────────────────────────────────────────────────────────
@@ -121,50 +122,12 @@ async function fetchJson(url) {
 }
 
 // ── Title filter ────────────────────────────────────────────────────
-
-function buildTitleFilter(titleFilter) {
-  const positive = (titleFilter?.positive || []).map(k => k.toLowerCase());
-  const negative = (titleFilter?.negative || []).map(k => k.toLowerCase());
-
-  return (title) => {
-    const lower = title.toLowerCase();
-    const hasPositive = positive.length === 0 || positive.some(k => lower.includes(k));
-    const hasNegative = negative.some(k => lower.includes(k));
-    return hasPositive && !hasNegative;
-  };
-}
+// (imported from lib/filters.mjs)
 
 // ── Dedup ───────────────────────────────────────────────────────────
 
-function loadSeenUrls() {
-  const seen = new Set();
-
-  // scan-history.tsv
-  if (existsSync(SCAN_HISTORY_PATH)) {
-    const lines = readFileSync(SCAN_HISTORY_PATH, 'utf-8').split('\n');
-    for (const line of lines.slice(1)) { // skip header
-      const url = line.split('\t')[0];
-      if (url) seen.add(url);
-    }
-  }
-
-  // pipeline.md — extract URLs from checkbox lines
-  if (existsSync(PIPELINE_PATH)) {
-    const text = readFileSync(PIPELINE_PATH, 'utf-8');
-    for (const match of text.matchAll(/- \[[ x]\] (https?:\/\/\S+)/g)) {
-      seen.add(match[1]);
-    }
-  }
-
-  // applications.md — extract URLs from report links and any inline URLs
-  if (existsSync(APPLICATIONS_PATH)) {
-    const text = readFileSync(APPLICATIONS_PATH, 'utf-8');
-    for (const match of text.matchAll(/https?:\/\/[^\s|)]+/g)) {
-      seen.add(match[0]);
-    }
-  }
-
-  return seen;
+function getSeenUrls() {
+  return loadSeenUrls(SCAN_HISTORY_PATH, PIPELINE_PATH, APPLICATIONS_PATH);
 }
 
 function loadSeenCompanyRoles() {
@@ -278,7 +241,7 @@ async function main() {
   if (dryRun) console.log('(dry run — no files will be written)\n');
 
   // 3. Load dedup sets
-  const seenUrls = loadSeenUrls();
+  const seenUrls = getSeenUrls();
   const seenCompanyRoles = loadSeenCompanyRoles();
 
   // 4. Fetch all APIs
