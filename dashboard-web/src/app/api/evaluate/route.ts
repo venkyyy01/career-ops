@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import path from 'path';
-import { getCareerOpsMCP } from '@/mcp/client';
-import { getCareerOpsPath } from '@/lib/career-ops-path';
+import { getCareerOpsPath, escapeShellArg } from '@/lib/career-ops-path';
+
+const execFileAsync = promisify(execFile);
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,28 +17,37 @@ export async function POST(request: NextRequest) {
     }
 
     const careerOpsPath = getCareerOpsPath(inputPath);
-    const mcp = getCareerOpsMCP(careerOpsPath);
 
+    const prompt = buildEvaluationPrompt(jdText || jdUrl, company, role);
+
+    let output = '';
     try {
-      const result = await mcp.evaluateJob(jdText, jdUrl, company, role);
-
-      return NextResponse.json({
-        success: true,
-        ...result,
-        careerOpsPath
+      const { stdout } = await execFileAsync('claude', [
+        '-p',
+        '--output-format', 'stream-json',
+        prompt.slice(0, 100000),
+      ], {
+        cwd: careerOpsPath,
+        timeout: 180000,
+        maxBuffer: 10 * 1024 * 1024,
       });
-    } catch (error) {
-      console.error('MCP evaluation error:', error);
-      return NextResponse.json({
-        error: 'Evaluation failed',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      }, { status: 500 });
+      output = stdout;
+    } catch (error: any) {
+      output = error.stdout || error.message;
     }
+
+    const result = parseEvaluationOutput(output);
+
+    return NextResponse.json({
+      success: true,
+      ...result,
+      careerOpsPath,
+    });
   } catch (error) {
     console.error('API error:', error);
     return NextResponse.json({
       error: 'Failed to evaluate job description',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
     }, { status: 500 });
   }
 }
@@ -63,8 +75,81 @@ export async function GET(request: NextRequest) {
     hasCV: cvContent.length > 0,
     hasProfile: Object.keys(profileData).length > 0,
     archetypes: profileData.archetypes || ['Generalist'],
-    targets: profileData.targets || {}
+    targets: profileData.targets || {},
   });
+}
+
+function buildEvaluationPrompt(jdContent: string, company?: string, role?: string): string {
+  return `You are evaluating a job posting. Perform a comprehensive A-G evaluation.
+
+${jdContent ? `Job Description:\n${jdContent}` : ''}
+
+Generate a detailed evaluation report with:
+
+## Block A: Role Summary
+- **Archetype:** ${company || '[Company]'} ${role ? `- ${role}` : ''}
+- **Domain:** [Industry/field]
+- **Seniority:** [Level detection]
+- **Remote:** [Policy]
+
+## Block B: CV-to-JD Mapping
+- **Match Score:** [X/5]
+- **Gaps:** [List gaps]
+
+## Block C: Level Assessment
+- **Detected Level:** [Based on requirements]
+
+## Block D: Compensation Research
+- **Market Range:** [Estimated]
+
+## Block E: Personalization Plan
+- **CV Changes:** [What to modify]
+
+## Block F: Interview Prep
+- **Key Topics:** [5-7 topics]
+
+## Block G: Legitimacy Assessment
+- **Verdict:** [High/Proceed/Suspicious]
+- **Red Flags:** [Any concerns]
+
+## Summary
+- **TL;DR:** [One-sentence summary]
+- **Comp:** [Compensation if mentioned or estimated]
+- **Remote:** [Remote policy]
+- **Overall Score:** [X/5]
+- **Archetype:** [Archetype name]
+
+Format as Markdown.`;
+}
+
+function parseEvaluationOutput(output: string) {
+  const scoreMatch = output.match(/\*\*(?:Overall )?Score:\*\*\s*(\d+\.?\d*)/i) || output.match(/Score:\s*(\d+\.?\d*)\/5/i);
+  const archetypeMatch = output.match(/\*\*(?:Arquetipo|Archetype):\*\*\s*([^\n|]+)/i);
+  const tldrMatch = output.match(/\*\*TL;DR:\*\*\s*([^\n]+)/i);
+  const compMatch = output.match(/\*\*Comp:\*\*\s*([^\n]+)/i);
+  const remoteMatch = output.match(/\*\*Remote:\*\*\s*([^\n]+)/i);
+  const verdictMatch = output.match(/\*\*Verdict:\*\*\s*([^\n]+)/i);
+
+  const blocks: Record<string, string> = {};
+  const blockRegex = /##\s+(Block\s+[A-G]:.+?)(?=\n##\s+Block|\n##\s+Summary|$)/gi;
+  let blockMatch;
+  while ((blockMatch = blockRegex.exec(output)) !== null) {
+    const title = blockMatch[1].trim().replace(/^Block\s+[A-G]:\s*/, '');
+    blocks[title] = blockMatch[0].replace(/^##\s+Block\s+[A-G]:\s*.+\n/, '').trim();
+  }
+
+  return {
+    report: output,
+    evaluation: {
+      score: scoreMatch ? parseFloat(scoreMatch[1]) : 0,
+      archetype: archetypeMatch ? archetypeMatch[1].trim() : '',
+      tldr: tldrMatch ? tldrMatch[1].trim() : '',
+      comp: compMatch ? compMatch[1].trim() : '',
+      remote: remoteMatch ? remoteMatch[1].trim() : '',
+      verdict: verdictMatch ? verdictMatch[1].trim() : '',
+      blocks,
+    },
+  };
 }
 
 function parseYamlProfile(content: string): any {

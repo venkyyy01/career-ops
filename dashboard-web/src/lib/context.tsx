@@ -58,8 +58,7 @@ export function PipelineProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
-      const path = careerOpsPath || '';
-      const res = await fetch(`/api/applications?path=${encodeURIComponent(path)}`);
+      const res = await fetch(`/api/applications?path=${encodeURIComponent(careerOpsPath)}`);
       const data = await res.json();
 
       if (data.error) {
@@ -71,8 +70,13 @@ export function PipelineProvider({ children }: { children: React.ReactNode }) {
         setApps(data.apps || []);
         setMetrics(data.metrics || null);
         setReportCache(data.reportCache || {});
-        if (data.apps) {
+        if (data.progressMetrics) {
+          setProgressMetrics(data.progressMetrics);
+        } else if (data.apps) {
           setProgressMetrics(computeProgressMetrics(data.apps));
+        }
+        if (data.careerOpsPath && !careerOpsPath) {
+          setCareerOpsPath(data.careerOpsPath);
         }
       }
     } catch (e) {

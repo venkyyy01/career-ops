@@ -1,35 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCareerOpsMCP } from '@/mcp/client';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import path from 'path';
 import { getCareerOpsPath } from '@/lib/career-ops-path';
+
+const execFileAsync = promisify(execFile);
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const careerOpsPath = getCareerOpsPath(searchParams.get('path'));
 
-  const mcp = getCareerOpsMCP(careerOpsPath);
-
   try {
-    const result = await mcp.patternAnalysis();
+    const { stdout } = await execFileAsync('node', [
+      path.join(careerOpsPath, 'analyze-patterns.mjs'),
+    ], {
+      cwd: careerOpsPath,
+      timeout: 60000,
+      maxBuffer: 10 * 1024 * 1024,
+    });
 
-    let analysis;
-    if (typeof result === 'string') {
-      analysis = parseAnalysisOutput(result);
-    } else if (result.analysis) {
-      analysis = parseAnalysisOutput(result.analysis);
-    } else {
-      analysis = result;
-    }
+    const analysis = parseAnalysisOutput(stdout);
 
     return NextResponse.json({
       analysis,
-      careerOpsPath
+      careerOpsPath,
     });
-  } catch (error) {
-    console.error('Error analyzing patterns:', error);
+  } catch (error: any) {
+    const output = error.stdout || '';
+    const analysis = output ? parseAnalysisOutput(output) : null;
+
     return NextResponse.json({
-      error: 'Failed to analyze patterns',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
+      analysis,
+      error: error.message,
+      careerOpsPath,
+    });
   }
 }
 
@@ -39,14 +43,21 @@ export async function POST(request: NextRequest) {
     const { action = 'analyze', careerOpsPath: inputPath } = body;
 
     const careerOpsPath = getCareerOpsPath(inputPath);
-    const mcp = getCareerOpsMCP(careerOpsPath);
 
     if (action === 'regenerate') {
       try {
-        const result = await mcp.patternAnalysis();
-        return NextResponse.json({ success: true, ...result });
-      } catch (error) {
-        return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+        const { stdout } = await execFileAsync('node', [
+          path.join(careerOpsPath, 'analyze-patterns.mjs'),
+        ], {
+          cwd: careerOpsPath,
+          timeout: 60000,
+          maxBuffer: 10 * 1024 * 1024,
+        });
+
+        const analysis = parseAnalysisOutput(stdout);
+        return NextResponse.json({ success: true, analysis });
+      } catch (error: any) {
+        return NextResponse.json({ success: false, error: error.message });
       }
     }
 
@@ -55,7 +66,7 @@ export async function POST(request: NextRequest) {
     console.error('API error:', error);
     return NextResponse.json({
       error: 'Failed to process patterns',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
     }, { status: 500 });
   }
 }
@@ -67,7 +78,7 @@ function parseAnalysisOutput(output: string): any {
     funnelAnalysis: {},
     archetypePerformance: [],
     topBlockers: [],
-    recommendations: []
+    recommendations: [],
   };
 
   let currentSection = '';
@@ -84,6 +95,7 @@ function parseAnalysisOutput(output: string): any {
       else if (title.includes('recommend')) currentSection = 'recommendation';
     } else if (trimmed.startsWith('|') && currentSection) {
       const fields = trimmed.split('|').map(f => f.trim()).filter(f => f);
+      if (fields[0] === '#' || fields[0] === '---') continue;
       if (currentSection === 'archetype') {
         analysis.archetypePerformance.push(fields.join(' | '));
       } else if (currentSection === 'blocker') {

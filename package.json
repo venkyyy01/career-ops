@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "AI-powered job search pipeline built on Claude Code",
   "scripts": {
+    "dev": "cd dashboard-web && npx next dev",
+    "build": "cd dashboard-web && npx next build",
+    "start": "cd dashboard-web && npx next start -p $PORT",
     "doctor": "node doctor.mjs",
     "verify": "node verify-pipeline.mjs",
     "normalize": "node normalize-statuses.mjs",
@@ -16,7 +19,8 @@
     "liveness": "node check-liveness.mjs",
     "scan": "node scan.mjs",
     "crawl": "node crawl.mjs",
-    "crawl:browser": "node crawl-browser.mjs"
+    "crawl:browser": "node crawl-browser.mjs",
+    "heroku-postbuild": "cd dashboard-web && npm install && npx next build"
   },
   "keywords": [
     "ai",
